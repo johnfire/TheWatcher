@@ -1,0 +1,48 @@
+# Secrets
+.env
+
+# Runtime data (may contain sensitive screenshots, credentials, session data)
+data/screenshots/
+data/sessions/
+data/specs/*-credentials.json
+
+# Logs
+logs/
+tmp/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# uv
+.uv/
+
+# Keep data subdirs but not their contents
+!data/specs/.gitkeep
+!data/sitemaps/.gitkeep
+!data/sessions/.gitkeep
+!data/screenshots/.gitkeep
+!data/reports/.gitkeep
