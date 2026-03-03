@@ -11,6 +11,7 @@ from rich.table import Table
 from ..browser.capture import ScreenCapture
 from ..browser.cdp import CDPClient
 from ..config.settings import Settings
+from ..core.crawl_engine import CrawlEngine
 from ..models.router import AllProvidersFailed, CostLimitExceeded, ModelRouter
 
 console = Console()
@@ -107,6 +108,65 @@ def list_projects():
     for p in projects:
         cfg = json.loads((p / "project.json").read_text())
         table.add_row(cfg["name"], cfg["url"], cfg["created_at"][:10])
+
+    console.print(table)
+
+
+# ── crawl ─────────────────────────────────────────────────────────────────────
+
+@cli.command()
+@click.argument("name")
+@click.option("--max-pages", default=None, type=int, help="Override max pages setting")
+@click.option("--max-depth", default=None, type=int, help="Override max depth setting")
+def crawl(name: str, max_pages: int | None, max_depth: int | None):
+    """Crawl a project's URL and build a sitemap."""
+    settings = Settings()
+    _setup_logging(settings)
+
+    project_dir = settings.data_dir / name
+    if not project_dir.exists() or not (project_dir / "project.json").exists():
+        console.print(f"[red]Project '{name}' not found. Run `bdd-vision init` first.[/red]")
+        return
+
+    cfg = json.loads((project_dir / "project.json").read_text())
+    url = cfg["url"]
+
+    if max_pages is not None:
+        settings.max_pages = max_pages
+    if max_depth is not None:
+        settings.max_depth = max_depth
+
+    console.print(
+        f"[bold]Crawling[/bold] {url} "
+        f"(max_pages={settings.max_pages}, max_depth={settings.max_depth})"
+    )
+
+    engine = CrawlEngine(settings)
+    try:
+        sitemap = asyncio.run(engine.crawl(name, url))
+    except Exception as e:
+        console.print(f"[red]✗ Crawl failed: {e}[/red]")
+        logger.exception("Crawl error")
+        return
+
+    console.print(f"\n[green]✓ Crawled {sitemap['total_pages']} page(s)[/green]")
+    console.print(f"  Cost   : ${sitemap['total_cost_usd']:.4f}")
+    console.print(f"  Tokens : {sitemap['total_tokens']}")
+
+    # Print page summary table
+    table = Table(title="Crawl Summary")
+    table.add_column("Depth", style="dim", width=5)
+    table.add_column("URL")
+    table.add_column("Title")
+    table.add_column("Links", width=6)
+
+    for page in sitemap["pages"]:
+        table.add_row(
+            str(page["depth"]),
+            page["url"],
+            page.get("title") or "",
+            str(len(page.get("links_found", []))),
+        )
 
     console.print(table)
 

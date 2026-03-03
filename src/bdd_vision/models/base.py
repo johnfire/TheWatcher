@@ -1,7 +1,18 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from PIL import Image
+
+
+@dataclass
+class CrawlPageResult:
+    """Structured analysis of a page for the crawl engine."""
+    page_description: str
+    elements: list[dict]        # {type, label, approximate_location, purpose}
+    navigation_links: list[dict]  # {label, inferred_path, purpose}
+    notes: list[str]
+    tokens_used: int
+    cost_usd: float
 
 
 @dataclass
@@ -25,6 +36,13 @@ class BaseVLMProvider(ABC):
         context: str = "",
     ) -> VLMResponse:
         """Given a screenshot and an instruction, return an action decision."""
+
+    @abstractmethod
+    async def analyze_page(
+        self,
+        screenshot: Image.Image,
+    ) -> CrawlPageResult:
+        """Analyze a page screenshot for crawl purposes (structure, links, elements)."""
 
     @abstractmethod
     async def health_check(self) -> bool:

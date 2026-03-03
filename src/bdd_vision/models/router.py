@@ -2,7 +2,7 @@ from loguru import logger
 from PIL import Image
 
 from ..config.settings import ModelTier, Settings
-from .base import BaseVLMProvider, VLMResponse
+from .base import BaseVLMProvider, CrawlPageResult, VLMResponse
 from .claude_cu import ClaudeComputerUseProvider
 from .deepseek import DeepSeekProvider
 from .gemini import GeminiProvider
@@ -73,6 +73,43 @@ class ModelRouter:
                     f"tokens={response.tokens_used} | cost=${response.cost_usd:.4f}"
                 )
                 return response
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"Provider {provider.name} failed: {e}. Trying next provider."
+                )
+                continue
+
+        raise AllProvidersFailed(
+            f"All providers failed. Last error: {last_error}"
+        )
+
+    async def analyze_page(self, screenshot: Image.Image) -> CrawlPageResult:
+        if self.session_cost >= self.max_cost:
+            raise CostLimitExceeded(
+                f"Session cost limit ${self.max_cost:.2f} reached "
+                f"(used ${self.session_cost:.4f})"
+            )
+
+        last_error: Exception | None = None
+
+        for provider in self.providers:
+            try:
+                if not await provider.health_check():
+                    logger.debug(f"Provider {provider.name} unavailable — skipping")
+                    continue
+
+                result = await provider.analyze_page(screenshot)
+                self.session_cost += result.cost_usd
+                self.session_tokens += result.tokens_used
+
+                logger.info(
+                    f"VLM {provider.name} | crawl_page | "
+                    f"links={len(result.navigation_links)} | "
+                    f"tokens={result.tokens_used} | cost=${result.cost_usd:.4f}"
+                )
+                return result
 
             except Exception as e:
                 last_error = e
