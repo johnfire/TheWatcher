@@ -399,3 +399,26 @@ def run_tests(name: str, scenario: str | None, spec_file: str | None):
         )
 
     console.print(table)
+
+
+# ── report ─────────────────────────────────────────────────────────────────────
+
+@cli.command(name="report")
+@click.argument("name")
+@click.argument("session_id")
+@click.option("--format", "fmt", default="markdown", type=click.Choice(["markdown", "pdf"]), show_default=True)
+def report(name: str, session_id: str, fmt: str):
+    """Generate a markdown or PDF report for a completed test session."""
+    settings = Settings()
+    _setup_logging(settings)
+
+    from ..core.orchestrator import Orchestrator
+    orch = Orchestrator(name, settings)
+    try:
+        path = asyncio.run(orch.run_report(session_id, fmt))
+        console.print(f"[green]✓ Report saved:[/green] {path}")
+    except FileNotFoundError as e:
+        console.print(f"[red]✗ {e}[/red]")
+    except Exception as e:
+        console.print(f"[red]✗ Report generation failed: {e}[/red]")
+        logger.exception("Report error")
