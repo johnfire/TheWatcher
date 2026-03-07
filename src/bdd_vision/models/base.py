@@ -1,7 +1,15 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PIL import Image
+
+
+@dataclass
+class TextResponse:
+    """Response from a text-only (no image) VLM call."""
+    text: str
+    tokens_used: int
+    cost_usd: float
 
 
 @dataclass
@@ -36,6 +44,10 @@ class BaseVLMProvider(ABC):
         context: str = "",
     ) -> VLMResponse:
         """Given a screenshot and an instruction, return an action decision."""
+
+    @abstractmethod
+    async def generate_text(self, prompt: str) -> TextResponse:
+        """Text-only generation — no screenshot. Used for spec generation and clarification."""
 
     @abstractmethod
     async def analyze_page(

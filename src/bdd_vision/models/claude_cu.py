@@ -7,7 +7,7 @@ import anthropic
 from loguru import logger
 from PIL import Image
 
-from .base import BaseVLMProvider, CrawlPageResult, VLMResponse
+from .base import BaseVLMProvider, CrawlPageResult, TextResponse, VLMResponse
 
 _CRAWL_PROMPT = """\
 Analyze this webpage screenshot and provide a structured page analysis.
@@ -175,6 +175,26 @@ class ClaudeComputerUseProvider(BaseVLMProvider):
             navigation_links=parsed.get("navigation_links", []),
             notes=parsed.get("notes", []),
             tokens_used=tokens,
+            cost_usd=cost,
+        )
+
+
+    async def generate_text(self, prompt: str) -> TextResponse:
+        response = await self._get_client().messages.create(
+            model=self.MODEL,
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        content = response.content[0].text
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        cost = (
+            input_tokens * _INPUT_COST_PER_TOKEN
+            + output_tokens * _OUTPUT_COST_PER_TOKEN
+        )
+        return TextResponse(
+            text=content,
+            tokens_used=input_tokens + output_tokens,
             cost_usd=cost,
         )
 

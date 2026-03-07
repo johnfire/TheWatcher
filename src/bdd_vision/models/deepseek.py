@@ -7,7 +7,7 @@ import httpx
 from loguru import logger
 from PIL import Image
 
-from .base import BaseVLMProvider, CrawlPageResult, VLMResponse
+from .base import BaseVLMProvider, CrawlPageResult, TextResponse, VLMResponse
 
 _CRAWL_PROMPT = """\
 Analyze this webpage screenshot and provide a structured page analysis.
@@ -183,6 +183,34 @@ class DeepSeekProvider(BaseVLMProvider):
             tokens_used=tokens,
             cost_usd=cost,
         )
+
+
+    async def generate_text(self, prompt: str) -> TextResponse:
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 4096,
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{self.BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        usage = data.get("usage", {})
+        tokens = usage.get("total_tokens", 0)
+        input_tokens = usage.get("prompt_tokens", tokens // 2)
+        output_tokens = usage.get("completion_tokens", tokens // 2)
+        cost = input_tokens * 0.14 / 1_000_000 + output_tokens * 0.28 / 1_000_000
+        return TextResponse(text=content, tokens_used=tokens, cost_usd=cost)
 
 
 def _parse_json(text: str) -> dict:

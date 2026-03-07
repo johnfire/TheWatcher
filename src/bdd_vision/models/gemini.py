@@ -7,7 +7,7 @@ Wire this up when a Gemini API key is available.
 from PIL import Image
 from loguru import logger
 
-from .base import BaseVLMProvider, CrawlPageResult, VLMResponse
+from .base import BaseVLMProvider, CrawlPageResult, TextResponse, VLMResponse
 
 
 class GeminiProvider(BaseVLMProvider):
@@ -28,6 +28,10 @@ class GeminiProvider(BaseVLMProvider):
         # TODO: implement Gemini provider
         logger.debug("Gemini provider not yet implemented — skipping")
         return False
+
+    async def generate_text(self, prompt: str) -> TextResponse:
+        raise NotImplementedError("Gemini provider not yet implemented")
+
 
     async def analyze_page(self, screenshot: Image.Image) -> CrawlPageResult:
         raise NotImplementedError("Gemini provider not yet implemented")

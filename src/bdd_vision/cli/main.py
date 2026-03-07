@@ -12,6 +12,7 @@ from ..browser.capture import ScreenCapture
 from ..browser.cdp import CDPClient
 from ..config.settings import Settings
 from ..core.crawl_engine import CrawlEngine
+from ..core.spec_engine import SpecEngine
 from ..models.router import AllProvidersFailed, CostLimitExceeded, ModelRouter
 
 console = Console()
@@ -171,6 +172,8 @@ def crawl(name: str, max_pages: int | None, max_depth: int | None):
     console.print(table)
 
 
+
+
 # ── Smoke test (Phase 1 validation) ─────────────────────────────────────────
 
 async def _smoke_test(settings: Settings, project_dir: Path, url: str):
@@ -228,3 +231,103 @@ async def _smoke_test(settings: Settings, project_dir: Path, url: str):
         logger.exception("Smoke test error")
 
     await cdp.disconnect()
+
+
+# ── spec ──────────────────────────────────────────────────────────────────────
+
+@cli.group()
+def spec():
+    """Manage BDD specifications for a project."""
+
+
+@spec.command(name="generate")
+@click.argument("name")
+def spec_generate(name: str):
+    """Interview + VLM to generate a BDD spec from a crawled sitemap."""
+    settings = Settings()
+    _setup_logging(settings)
+
+    project_dir = settings.data_dir / name
+    if not project_dir.exists() or not (project_dir / "project.json").exists():
+        console.print(f"[red]Project '{name}' not found. Run `bdd-vision init` first.[/red]")
+        return
+
+    engine = SpecEngine(settings)
+    try:
+        spec_doc = asyncio.run(engine.generate(name))
+    except RuntimeError as e:
+        console.print(f"[red]✗ {e}[/red]")
+        return
+    except Exception as e:
+        console.print(f"[red]✗ Spec generation failed: {e}[/red]")
+        logger.exception("Spec generation error")
+        return
+
+    console.print(f"\n[green]✓ Spec v{spec_doc['version']} generated[/green]")
+    console.print(f"  Scenarios : {spec_doc['total_scenarios']}")
+    console.print(f"  Steps     : {spec_doc['total_steps']}")
+    console.print(f"  Cost      : ${spec_doc['cost_usd']:.4f}")
+    _print_spec_summary(spec_doc)
+
+
+@spec.command(name="edit")
+@click.argument("name")
+def spec_edit(name: str):
+    """Re-generate spec for a project (preserves previous versions)."""
+    settings = Settings()
+    _setup_logging(settings)
+
+    project_dir = settings.data_dir / name
+    if not project_dir.exists() or not (project_dir / "project.json").exists():
+        console.print(f"[red]Project '{name}' not found.[/red]")
+        return
+
+    engine = SpecEngine(settings)
+    try:
+        spec_doc = asyncio.run(engine.edit(name))
+    except Exception as e:
+        console.print(f"[red]✗ {e}[/red]")
+        logger.exception("Spec edit error")
+        return
+
+    console.print(f"\n[green]✓ Spec v{spec_doc['version']} ready[/green]")
+
+
+@spec.command(name="show")
+@click.argument("name")
+def spec_show(name: str):
+    """Display the current spec for a project."""
+    settings = Settings()
+    project_dir = settings.data_dir / name
+    specs_dir = project_dir / "specs"
+
+    if not specs_dir.exists():
+        console.print(f"[yellow]No specs for '{name}'. Run `bdd-vision spec generate`.[/yellow]")
+        return
+
+    files = sorted(specs_dir.glob("spec_v*.json"))
+    if not files:
+        console.print(f"[yellow]No specs for '{name}'.[/yellow]")
+        return
+
+    spec_doc = json.loads(files[-1].read_text())
+    console.print(
+        f"\n[bold]Spec v{spec_doc['version']}[/bold]  —  "
+        f"{spec_doc['project']}  ({spec_doc['created_at'][:10]})"
+    )
+    console.print(f"Brief: {spec_doc['brief']}\n")
+    _print_spec_summary(spec_doc)
+
+
+def _print_spec_summary(spec_doc: dict):
+    for feature in spec_doc.get("features", []):
+        console.print(f"[bold cyan]Feature: {feature['name']}[/bold cyan]")
+        if feature.get("description"):
+            console.print(f"  {feature['description']}")
+        table = Table(show_header=True, header_style="bold")
+        table.add_column("Scenario")
+        table.add_column("Steps", width=6)
+        for scenario in feature.get("scenarios", []):
+            table.add_row(scenario["name"], str(len(scenario.get("steps", []))))
+        console.print(table)
+        console.print()
