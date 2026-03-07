@@ -331,3 +331,71 @@ def _print_spec_summary(spec_doc: dict):
             table.add_row(scenario["name"], str(len(scenario.get("steps", []))))
         console.print(table)
         console.print()
+
+
+# ── run ───────────────────────────────────────────────────────────────────────
+
+@cli.command(name="run")
+@click.argument("name")
+@click.option("--scenario", default=None, help="Filter: run only scenarios whose name contains this string")
+@click.option("--spec", "spec_file", default=None, help="Specific spec file (default: latest)")
+def run_tests(name: str, scenario: str | None, spec_file: str | None):
+    """Run BDD scenarios against a project using the VLM agent."""
+    settings = Settings()
+    _setup_logging(settings)
+
+    project_dir = settings.data_dir / name
+    if not project_dir.exists() or not (project_dir / "project.json").exists():
+        console.print(f"[red]Project '{name}' not found.[/red]")
+        return
+
+    specs_dir = project_dir / "specs"
+    if spec_file:
+        spec_path = Path(spec_file)
+    else:
+        files = sorted(specs_dir.glob("spec_v*.json")) if specs_dir.exists() else []
+        if not files:
+            console.print(f"[red]No specs for '{name}'. Run `bdd-vision spec generate` first.[/red]")
+            return
+        spec_path = files[-1]
+
+    console.print(f"[bold]Running spec:[/bold] {spec_path.name}")
+    if scenario:
+        console.print(f"  Filter: '{scenario}'")
+
+    from ..core.agent_runner import AgentRunner
+    runner = AgentRunner(settings)
+    try:
+        result = asyncio.run(runner.run(name, spec_path, scenario))
+    except Exception as e:
+        console.print(f"[red]✗ Test run failed: {e}[/red]")
+        logger.exception("Run error")
+        return
+
+    # Summary
+    total = result.passed + result.failed + result.skipped
+    pass_color = "green" if result.failed == 0 else "red"
+    console.print(f"\n[bold]Results[/bold]  session={result.session_id}")
+    console.print(f"  [{pass_color}]Passed : {result.passed}/{total}[/{pass_color}]")
+    console.print(f"  Failed : {result.failed}")
+    console.print(f"  Skipped: {result.skipped}")
+    console.print(f"  Steps  : {result.total_steps}")
+    console.print(f"  Cost   : ${result.total_cost_usd:.4f}")
+
+    table = Table(title="Scenario Results")
+    table.add_column("Scenario")
+    table.add_column("Status", width=8)
+    table.add_column("Steps", width=6)
+    table.add_column("Cost", width=8)
+
+    status_colors = {"pass": "green", "fail": "red", "partial": "yellow", "skip": "dim"}
+    for r in result.scenarios:
+        color = status_colors.get(r.status, "white")
+        table.add_row(
+            r.scenario_name,
+            f"[{color}]{r.status}[/{color}]",
+            str(len(r.steps)),
+            f"${r.total_cost_usd:.4f}",
+        )
+
+    console.print(table)
